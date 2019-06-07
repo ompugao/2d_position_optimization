@@ -13,4 +13,4 @@ $ python main_sympy.py
 ```
 
 ## screenshot
-![sampleimage]('./sample.png')
+![sampleimage](./sample.png)
