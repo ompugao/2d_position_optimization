@@ -1,8 +1,8 @@
 import nlopt
 import sympy
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import time
 
 class OptimizationException(Exception):
@@ -20,36 +20,44 @@ class Constraint(object):
         pass
 
 class ConstraintX(Constraint):
-    def __init__(self, num_beacons, id, x):
+    def __init__(self, num_beacons, id, x, tolerance=None):
         super().__init__(num_beacons)
         self.id = id
         self.x = x
+        if tolerance is None:
+            self.tolerance = 0.0
+        else:
+            self.tolerance = tolerance
 
     def __call__(self, opt, x_op):
         def cost(x, grad):
             if grad.size > 0:
                 for g in grad:
                     g = 0
-                grad[i] = 2 * (x[i] - self.x)
+                grad[self.id] = 2 * (float(x[self.id]) - self.x)
 
-            return (float(x[i]) - self.x)**2
-        opt.add_equality_constraint(cost)
+            return (float(x[self.id]) - self.x)**2
+        opt.add_equality_constraint(cost, self.tolerance)
 
 class ConstraintY(Constraint):
-    def __init__(self, num_beacons, id, y):
+    def __init__(self, num_beacons, id, y, tolerance=None):
         super().__init__(num_beacons)
         self.id = id
         self.y = y
+        if tolerance is None:
+            self.tolerance = 0.0
+        else:
+            self.tolerance = tolerance
 
     def __call__(self, opt, x_op):
         def cost(x, grad):
             if grad.size > 0:
                 for g in grad:
                     g = 0
-                grad[i+self.num_beacons] = 2 * (x[i+self.num_beacons] - self.y)
+                grad[self.id+self.num_beacons] = 2 * (float(x[self.id+self.num_beacons]) - self.y)
 
-            return (float(x[i+self.num_beacons]) - self.y)**2
-        opt.add_equality_constraint(cost)
+            return (float(x[self.id+self.num_beacons]) - self.y)**2
+        opt.add_equality_constraint(cost, self.tolerance)
 
 class PositionsOptimizer(object):
     def __init__(self, num_beacons, mode):
@@ -78,15 +86,15 @@ class PositionsOptimizer(object):
         self.initial_guess[0, id] = x
         self.initial_guess[1, id] = y
 
-    def set_x_constraint(self, id, x):
-        self.constraints.append(ConstraintX(self.num_beacons, id, x))
+    def set_x_constraint(self, id, x, tolerance=None):
+        self.constraints.append(ConstraintX(self.num_beacons, id, x, tolerance))
 
-    def set_y_constraint(self, id, y):
-        self.constraints.append(ConstraintY(self.num_beacons, id, y))
+    def set_y_constraint(self, id, y, tolerance=None):
+        self.constraints.append(ConstraintY(self.num_beacons, id, y, tolerance))
 
-    def set_position_constraint(self, id, x, y):
-        self.constraints.append(ConstraintX(self.num_beacons, id, x))
-        self.constraints.append(ConstraintY(self.num_beacons, id, y))
+    def set_position_constraint(self, id, x, y, tolerance=None):
+        self.constraints.append(ConstraintX(self.num_beacons, id, x, tolerance))
+        self.constraints.append(ConstraintY(self.num_beacons, id, y, tolerance))
 
     def optimize(self,):
         x_op = np.array(sympy.symbols('x:2:%d'%self.num_beacons)).reshape(2, self.num_beacons)
@@ -94,6 +102,10 @@ class PositionsOptimizer(object):
         for m in self.distances:
             id1, id2, dist = m
             cost_op += (np.sum((np.hstack([x_op[:,id1], self.heights[id1]]) - np.hstack([x_op[:,id2], self.heights[id2]]))**2) - dist**2)**2
+
+        print('simplify cost operator...')
+        cost_op = cost_op.simplify()
+        print('done')
 
         def cost(x, grad):
             mapping = {}
@@ -111,7 +123,8 @@ class PositionsOptimizer(object):
             cost = cost_op.subs(mapping)
             return float(cost)
 
-        opt = nlopt.opt(nlopt.LD_MMA, self.num_beacons*2)
+        #opt = nlopt.opt(nlopt.LD_MMA, self.num_beacons*2)
+        opt = nlopt.opt(nlopt.LD_AUGLAG, self.num_beacons*2)
         #opt = nlopt.opt(nlopt.LN_NELDERMEAD, self.num_beacons*2)
         # opt.set_lower_bounds(np.ones(num_beacons*2)*(-10.0))
         # opt.set_upper_bounds(np.ones(num_beacons*2)*10.0)
@@ -135,7 +148,7 @@ class PositionsOptimizer(object):
     def plot(self, threed_positions, initial_guess, heights):
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.set_aspect('equal')
+        #ax.set_aspect('equal')
 
         xs = threed_positions[0, :]
         ys = threed_positions[1, :]
@@ -177,7 +190,8 @@ if __name__ == '__main__':
     optimizer.set_measured_distance(0, 4, np.linalg.norm([5, 12, 4]))
     optimizer.set_measured_distance(1, 4, np.linalg.norm([5, 7, 5]))
     optimizer.set_measured_distance(3, 4, np.linalg.norm([6, 2]))
-    # optimizer.set_position_constraint(0, 0, 0)
+
+    # optimizer.set_position_constraint(0, 0, 0, 0.01)
     # optimizer.set_x_constraint(1, 0)
     # optimizer.set_y_constraint(2, 0)
     optimizer.set_height(0, 2)
