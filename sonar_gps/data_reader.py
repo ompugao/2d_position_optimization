@@ -25,3 +25,27 @@ def read(filename='./unfreezed_rawdistances.log'):
 
 
     return d
+
+def iterative_read(filename='./freezed_rawdistances.log'):
+    with open(filename) as f:
+        line = f.readline()
+        regex = re.compile('Beacon from (\d+) to (\d+) is (\d+)\[mm\]')
+        chunk_end = '--  --'
+        d = {}
+        while line:
+            line = f.readline()
+
+            m = regex.match(line)
+            if m is None:
+                if line.rstrip() == chunk_end:
+                    yield d
+                    d.clear()
+                continue
+
+            t    = int(m.group(1)) # transmitter
+            r    = int(m.group(2)) # receiver
+            dist = int(m.group(3))
+            if dist != 0:
+                d[r] = dist/1000.0
+
+    return d

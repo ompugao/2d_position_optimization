@@ -156,7 +156,7 @@ class PositionsOptimizer(object):
 
         initial_xs = initial_guess[0, :]
         initial_ys = initial_guess[1, :]
-        initial_zs = self.heights
+        initial_zs = heights
 
 
         max_range = np.array([xs.max()-xs.min(), ys.max()-ys.min(), zs.max()-zs.min()]).max() * 0.5
@@ -178,6 +178,88 @@ class PositionsOptimizer(object):
             ax.plot([threed_positions[0, id1], threed_positions[0, id2]], [threed_positions[1, id1], threed_positions[1, id2]], [threed_positions[2, id1], threed_positions[2, id2]], '-')
 
         plt.show()
+
+class LocalizationProcessor(object):
+    def __init__(self, positions, mapping):
+        self.positions = positions
+        self.mapping = mapping
+        self.fig = None
+
+    def get_beacon_position(self, id):
+        return self.positions[:, self.mapping[id]]
+
+    def process(self, d, initial_guess):
+        x_op = np.array(sympy.symbols('x:3'))
+        cost_op = 0
+        for id, dist in d.items():
+            cost_op += (np.sum((x_op - self.get_beacon_position(id))**2) - dist**2)**2
+
+        print('simplify cost operator...')
+        cost_op = cost_op.simplify()
+        print('done')
+
+        def cost(x, grad):
+            m = {}
+            for i, v in enumerate(x):
+                m[x_op[i]] = v
+
+            if grad.size > 0:
+                for i, v in enumerate(x):
+                    grad[i] = sympy.diff(cost_op, x_op[i]).subs(m)
+
+            cost = cost_op.subs(m)
+            return float(cost)
+
+        #opt = nlopt.opt(nlopt.LD_MMA, self.num_beacons*2)
+        opt = nlopt.opt(nlopt.LD_MMA, 3)
+        #opt = nlopt.opt(nlopt.LN_NELDERMEAD, self.num_beacons*2)
+        # opt.set_lower_bounds(np.ones(num_beacons*2)*(-10.0))
+        # opt.set_upper_bounds(np.ones(num_beacons*2)*10.0)
+        opt.set_min_objective(cost)
+        opt.set_xtol_rel(0.001)
+        starttime = time.time()
+        print('optimization start!')
+        #optimum = opt.optimize(np.random.random(self.num_beacons*2).tolist())
+        optimum = opt.optimize(initial_guess.flatten())
+        print('time elapsed: %s'%(time.time()-starttime))
+        minf = opt.last_optimum_value()
+        print('optimum: ', optimum)
+        print('minf: ', minf)
+
+        return optimum
+
+    def plot(self, d, pos, fig = None):
+        if fig and not self.fig:
+            self.fig = fig
+            self.ax = self.fig.add_subplot(111, projection='3d')
+        if not self.fig:
+            self.fig = plt.figure()
+            self.ax = self.fig.add_subplot(111, projection='3d')
+
+        ax = self.ax
+
+        ax.cla()
+        #ax.set_aspect('equal')
+
+        xs = self.positions[0, :]
+        ys = self.positions[1, :]
+        zs = self.positions[2, :]
+
+        max_range = np.array([xs.max()-xs.min(), ys.max()-ys.min(), zs.max()-zs.min()]).max() * 0.5
+        max_range *= 1.05
+        mid_x = (xs.max()+xs.min()) * 0.5
+        mid_y = (ys.max()+ys.min()) * 0.5
+        mid_z = (zs.max()+zs.min()) * 0.5
+
+        ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
+        ax.scatter(xs, ys, zs, color='orange')
+
+        for id, dist in d.items():
+            ax.plot([pos[0], self.get_beacon_position(id)[0]], [pos[1], self.get_beacon_position(id)[1]], [pos[2], self.get_beacon_position(id)[2]], '-')
+        plt.pause(0.01)
 
 
 if __name__ == '__main__':

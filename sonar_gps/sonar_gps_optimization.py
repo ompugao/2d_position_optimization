@@ -35,6 +35,17 @@ if __name__ == '__main__':
     optimizer.set_initial_guess(mapping[8], 60.0, 10.0)
     positions, initial_guess, heights = optimizer.optimize()
     optimizer.plot(positions, initial_guess, heights)
+
+
+    lp = LocalizationProcessor(positions, mapping)
+
+    pos = np.zeros(3)
+    for d2 in data_reader.iterative_read('./freezed_rawdistances.log'):
+        print("=============")
+        print(d2)
+        print("------")
+        pos = lp.process(d2, pos)
+        lp.plot(d2, pos, fig=lp.fig)
     from IPython.terminal import embed; ipshell=embed.InteractiveShellEmbed(config=embed.load_default_config())(local_ns=locals())
 
 
